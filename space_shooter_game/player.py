@@ -44,9 +44,29 @@ class Player(pygame.sprite.Sprite):
             vec = pygame.math.Vector2(0, 1)
             create_particle_callback(pos, CYAN, random.randint(2, 5), random.randint(2, 4), vector=vec)
 
-    def shoot(self, current_time, bullet_group, create_bullet_callback):
+    def shoot(self, current_time, bullet_group, create_bullet_callback, target_pos=None):
         if current_time - self.last_shot_time >= SHOOT_COOLDOWN:
             self.last_shot_time = current_time
-            create_bullet_callback(self.rect.centerx, self.rect.top)
+            
+            base_direction = None
+            if target_pos:
+                base_direction = pygame.math.Vector2(target_pos) - pygame.math.Vector2(self.rect.center)
+            else:
+                base_direction = pygame.math.Vector2(0, -1)
+                
+            if base_direction.length() > 0:
+                base_direction = base_direction.normalize()
+                
+            # Spread shot logic
+            if BULLETS_PER_SHOT > 1:
+                start_angle = -((BULLETS_PER_SHOT - 1) * SPREAD_ANGLE) / 2
+                for i in range(BULLETS_PER_SHOT):
+                    angle = start_angle + (i * SPREAD_ANGLE)
+                    # Vector2.rotate uses degrees
+                    new_dir = base_direction.rotate(angle)
+                    create_bullet_callback(self.rect.centerx, self.rect.centery, new_dir)
+            else:
+                create_bullet_callback(self.rect.centerx, self.rect.centery, base_direction)
+                
             return True
         return False

@@ -83,6 +83,8 @@ def load_assets():
 
     return assets
 
+from ui import AnimatedText, Button, HealthBar
+
 def main():
     assets = load_assets()
     
@@ -112,6 +114,42 @@ def main():
     # VFX
     shaker = ScreenShake()
     
+    # --- UI SETUP ---
+    # Menu
+    title_text = AnimatedText(TITLE.upper(), assets['font_xl'], CYAN, SCREEN_WIDTH/2, SCREEN_HEIGHT/4, pulse_speed=0.05)
+    
+    def start_game():
+        nonlocal game_state, score, player
+        game_state = "PLAYING"
+        all_sprites.empty()
+        mobs.empty()
+        bullets.empty()
+        particles.empty()
+        player = Player()
+        all_sprites.add(player)
+        score = 0
+        
+    btn_play = Button("PLAY", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2, action=start_game)
+    btn_quit = Button("QUIT", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 80, bg_color=RED, hover_color=(200, 50, 50))
+    # Actually, proper way for closure variable:
+    def quit_game():
+        nonlocal running
+        running = False
+    btn_quit.action = quit_game
+
+    # HUD
+    health_bar = HealthBar(20, 20, 200, 20, max_value=PLAYER_LIVES, color=GREEN)
+    
+    # Game Over
+    go_text = AnimatedText("MISSION FAILED", assets['font_xl'], RED, SCREEN_WIDTH/2, SCREEN_HEIGHT/3, pulse_speed=0.02)
+    btn_retry = Button("RETRY", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 50, action=start_game)
+    btn_menu = Button("MENU", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 130)
+    
+    def set_state_menu():
+        nonlocal game_state
+        game_state = "MENU"
+    btn_menu.action = set_state_menu
+    
     # Callbacks
     def create_particle(pos, color, speed, radius, vector=None):
         Particle([particles], pos, color, speed, radius, decay=0.2, vector=vector)
@@ -129,9 +167,6 @@ def main():
     ADDENEMY = pygame.USEREVENT + 1
     pygame.time.set_timer(ADDENEMY, ENEMY_SPAWN_RATE)
     
-    # Menu Animation
-    pulse_val = 0
-
     while running:
         dt = clock.tick(FPS) / 1000.0 # Delta time in seconds if needed, but we use frames mostly
         current_time = pygame.time.get_ticks()
@@ -141,29 +176,17 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             
+            # Pass events to UI buttons based on state
             if game_state == "MENU":
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
-                        game_state = "PLAYING"
-                        # Reset
-                        all_sprites.empty()
-                        mobs.empty()
-                        bullets.empty()
-                        particles.empty()
-                        # Re-add player
-                        player = Player()
-                        all_sprites.add(player)
-                        score = 0
-                    if event.key == pygame.K_ESCAPE:
-                        running = False
+                btn_play.handle_event(event)
+                btn_quit.handle_event(event)
+                
+            elif game_state == "GAMEOVER":
+                btn_retry.handle_event(event)
+                btn_menu.handle_event(event)
 
-            elif game_state == "PLAYING":
+            if game_state == "PLAYING":
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_SPACE:
-                         if player.shoot(current_time, bullets, lambda x, y: bullets.add(Bullet(x, y))):
-                             if assets['shoot_sound']: assets['shoot_sound'].play()
-                             all_sprites.add(bullets.sprites()[-1])
-                             # Kickback/Recoil visual? Maybe just sound for now
                     if event.key == pygame.K_p:
                         paused = not paused
                     if event.key == pygame.K_ESCAPE:
@@ -174,30 +197,33 @@ def main():
                     mobs.add(new_enemy)
                     all_sprites.add(new_enemy)
                     
-            elif game_state == "GAMEOVER":
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_r:
-                        game_state = "PLAYING"
-                        all_sprites.empty()
-                        mobs.empty()
-                        bullets.empty()
-                        particles.empty()
-                        player = Player()
-                        all_sprites.add(player)
-                        score = 0
-                    if event.key == pygame.K_ESCAPE:
-                        running = False
-
         # 2. Update
         shake_offset = (0, 0)
         
-        if game_state == "PLAYING" and not paused:
+        if game_state == "MENU":
+            title_text.update()
+            btn_play.update()
+            btn_quit.update()
+            stars.update() # Keep stars moving
+            particles.update()
+
+        elif game_state == "PLAYING" and not paused:
+            # Auto-fire
+            mouse_pos = pygame.mouse.get_pos()
+            if player.shoot(current_time, bullets, lambda x, y, d=None: bullets.add(Bullet(x, y, d)), target_pos=mouse_pos):
+                if assets['shoot_sound']: assets['shoot_sound'].play()
+                all_sprites.add(bullets.sprites()[-1])
+
             # Player update with particle callback
             player.update(create_particle)
             mobs.update()
             bullets.update()
             stars.update()
             particles.update()
+            
+            # UI Update
+            health_bar.set_value(player.lives)
+            health_bar.update()
             
             # Collisions: Bullet <-> Enemy
             hits = pygame.sprite.groupcollide(mobs, bullets, True, True)
@@ -218,9 +244,12 @@ def main():
                     game_state = "GAMEOVER"
                     spawn_explosion(player.rect.center, CYAN, 50) # Huge player explosion
         
-        elif game_state in ["MENU", "GAMEOVER"]:
-             stars.update()
-             particles.update() 
+        elif game_state == "GAMEOVER":
+            go_text.update()
+            btn_retry.update()
+            btn_menu.update()
+            stars.update()
+            particles.update() 
 
         # Get screen shake offset
         shake_offset = shaker.get_offset()
@@ -247,11 +276,25 @@ def main():
             p.draw(screen, shake_offset)
 
         # UI Overlay
-        if game_state == "PLAYING":
+        if game_state == "MENU":
+            # Dim Background
+            s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            s.fill((0, 0, 0, 150))
+            screen.blit(s, (0,0))
+            
+            title_text.draw(screen)
+            btn_play.draw(screen)
+            btn_quit.draw(screen)
+            
+            # Reset instructions
+            draw_neon_text(screen, "Mouse to Aim/Shoot", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT - 40)
+
+        elif game_state == "PLAYING":
              # Score
-             draw_neon_text(screen, f"SCORE: {score}", assets['font_ui'], WHITE, SCREEN_WIDTH/2, 20)
+             draw_neon_text(screen, f"SCORE: {score}", assets['font_ui'], WHITE, SCREEN_WIDTH - 100, 30)
              # Lives Bar
-             draw_neon_text(screen, "♥ " * player.lives, assets['font_ui'], RED, 20, 20, "nw")
+             health_bar.draw(screen)
+             draw_neon_text(screen, "LIVES", assets['font_ui'], WHITE, 60, 45, "center")
 
              if paused:
                  s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -259,33 +302,21 @@ def main():
                  screen.blit(s, (0,0))
                  draw_neon_text(screen, "PAUSED", assets['font_xl'], WHITE, SCREEN_WIDTH/2, SCREEN_HEIGHT/2)
 
-        elif game_state == "MENU":
-            # Darken bg
-            s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            s.fill((0, 0, 0, 100))
-            screen.blit(s, (0,0))
-            
-            draw_neon_text(screen, TITLE.upper(), assets['font_xl'], CYAN, SCREEN_WIDTH/2, SCREEN_HEIGHT/3, glow_color=BLUE)
-            
-            # Pulsing text
-            pulse_val += 0.1
-            alpha = abs(math.sin(pulse_val)) * 255
-            
-            start_surf = assets['font_large'].render("PRESS START", True, WHITE)
-            start_surf.set_alpha(alpha)
-            start_rect = start_surf.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 50))
-            screen.blit(start_surf, start_rect)
-            
-            draw_neon_text(screen, "ARROWS to Move  |  SPACE to Shoot", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT - 60)
-
         elif game_state == "GAMEOVER":
+             # Draw game scene behind?
+             if player.lives > 0:
+                 for sprite in all_sprites:
+                     screen.blit(sprite.image, (sprite.rect.x + shake_offset[0], sprite.rect.y + shake_offset[1]))
+             
              s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-             s.fill((50, 0, 0, 180)) # Red tint
+             s.fill((50, 0, 0, 200)) # Red tint
              screen.blit(s, (0,0))
              
-             draw_neon_text(screen, "MISSION FAILED", assets['font_xl'], RED, SCREEN_WIDTH/2, SCREEN_HEIGHT/3)
-             draw_neon_text(screen, f"FINAL SCORE: {score}", assets['font_large'], WHITE, SCREEN_WIDTH/2, SCREEN_HEIGHT/2)
-             draw_neon_text(screen, "Press R to Retry", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 80)
+             go_text.draw(screen)
+             draw_neon_text(screen, f"FINAL SCORE: {score}", assets['font_large'], WHITE, SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 40)
+             
+             btn_retry.draw(screen)
+             btn_menu.draw(screen)
 
         pygame.display.flip()
 

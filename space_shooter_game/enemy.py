@@ -17,12 +17,14 @@ class Enemy(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x = random.randrange(0, SCREEN_WIDTH - ENEMY_WIDTH)
         self.rect.y = random.randrange(-100, -40)
+        self.pos_y = float(self.rect.y)
         
         # Speed increases slightly with score/difficulty
-        speed_multiplier = 1 + (score_factor * 0.01)
-        self.speed = random.randrange(ENEMY_SPEED_MIN, ENEMY_SPEED_MAX + 1) * speed_multiplier
+        speed_multiplier = 1 + (score_factor * 0.005) # Reduced difficulty scaling
+        self.speed = random.uniform(ENEMY_SPEED_MIN, ENEMY_SPEED_MAX) * speed_multiplier
 
     def update(self):
-        self.rect.y += self.speed
+        self.pos_y += self.speed
+        self.rect.y = int(self.pos_y)
         if self.rect.top > SCREEN_HEIGHT + 10:
             self.kill()
