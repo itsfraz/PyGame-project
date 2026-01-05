@@ -62,3 +62,14 @@ ENEMY_SPAWN_RATE = 1500  # More intense
 # VFX Settings
 SCREEN_SHAKE_AMOUNT = 5
 PARTICLE_DECAY = 2
+
+# Power-up Settings
+POWERUP_SPAWN_CHANCE = 0.1  # 10% chance
+POWERUP_SPEED = 2
+POWERUP_SIZE = 30
+POWERUP_COLORS = {
+    'health': (0, 255, 0),      # Green
+    'shield': (0, 0, 255),      # Blue
+    'rapid_fire': (255, 255, 0) # Yellow
+}
+POWERUP_DURATION = 5000 # 5 seconds for temporary effects

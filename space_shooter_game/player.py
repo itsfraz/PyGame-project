@@ -21,8 +21,35 @@ class Player(pygame.sprite.Sprite):
         self.last_shot_time = 0
         self.lives = PLAYER_LIVES
         self.bullet_count = BULLETS_PER_SHOT
+        self.shoot_delay = SHOOT_COOLDOWN
+        self.powerups = {}
+        self.has_shield = False
+
+    def powerup(self, p_type):
+        now = pygame.time.get_ticks()
+        self.powerups[p_type] = now + POWERUP_DURATION
+        
+        if p_type == 'health':
+            self.lives += 1
+            # One time effect, remove immediately from update tracking if desired,
+            # but keeping it simple. Actually Health doesn't need duration.
+            del self.powerups['health']
+        elif p_type == 'shield':
+            self.has_shield = True
+        elif p_type == 'rapid_fire':
+            self.shoot_delay = SHOOT_COOLDOWN / 2
 
     def update(self, create_particle_callback=None):
+        # Powerup expiration
+        now = pygame.time.get_ticks()
+        if 'shield' in self.powerups and now > self.powerups['shield']:
+            self.has_shield = False
+            del self.powerups['shield']
+        
+        if 'rapid_fire' in self.powerups and now > self.powerups['rapid_fire']:
+            self.shoot_delay = SHOOT_COOLDOWN
+            del self.powerups['rapid_fire']
+
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
             self.rect.x -= self.speed
@@ -46,7 +73,7 @@ class Player(pygame.sprite.Sprite):
             create_particle_callback(pos, CYAN, random.randint(2, 5), random.randint(2, 4), vector=vec)
 
     def shoot(self, current_time, bullet_group, create_bullet_callback, target_pos=None):
-        if current_time - self.last_shot_time >= SHOOT_COOLDOWN:
+        if current_time - self.last_shot_time >= self.shoot_delay:
             self.last_shot_time = current_time
             
             base_direction = None
