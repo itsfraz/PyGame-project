@@ -20,6 +20,7 @@ class Player(pygame.sprite.Sprite):
         self.speed = PLAYER_SPEED
         self.last_shot_time = 0
         self.lives = PLAYER_LIVES
+        self.bullet_count = BULLETS_PER_SHOT
 
     def update(self, create_particle_callback=None):
         keys = pygame.key.get_pressed()
@@ -58,9 +59,9 @@ class Player(pygame.sprite.Sprite):
                 base_direction = base_direction.normalize()
                 
             # Spread shot logic
-            if BULLETS_PER_SHOT > 1:
-                start_angle = -((BULLETS_PER_SHOT - 1) * SPREAD_ANGLE) / 2
-                for i in range(BULLETS_PER_SHOT):
+            if self.bullet_count > 1:
+                start_angle = -((self.bullet_count - 1) * SPREAD_ANGLE) / 2
+                for i in range(self.bullet_count):
                     angle = start_angle + (i * SPREAD_ANGLE)
                     # Vector2.rotate uses degrees
                     new_dir = base_direction.rotate(angle)

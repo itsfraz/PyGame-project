@@ -85,9 +85,25 @@ def load_assets():
 
 from ui import AnimatedText, Button, HealthBar
 
+def get_high_score():
+    try:
+        with open("highscore.txt", "r") as f:
+            return int(f.read())
+    except:
+        return 0
+
+def save_high_score(new_score):
+    try:
+        with open("highscore.txt", "w") as f:
+            f.write(str(new_score))
+    except:
+        pass
+
 def main():
     assets = load_assets()
+    high_score = get_high_score()
     
+    # ... (rest of main initialization)
     # Groups
     all_sprites = pygame.sprite.Group()
     mobs = pygame.sprite.Group()
@@ -97,7 +113,7 @@ def main():
     
     # Create Stars
     for _ in range(50):
-        s = Star([stars]) # Render separately from all_sprites often for layering
+        s = Star([stars]) 
     
     player = Player()
     all_sprites.add(player)
@@ -117,6 +133,7 @@ def main():
     # --- UI SETUP ---
     # Menu
     title_text = AnimatedText(TITLE.upper(), assets['font_xl'], CYAN, SCREEN_WIDTH/2, SCREEN_HEIGHT/4, pulse_speed=0.05)
+    hs_text_menu = AnimatedText(f"HIGH SCORE: {high_score}", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT/4 + 60, pulse_speed=0.02)
     
     def start_game():
         nonlocal game_state, score, player
@@ -131,7 +148,7 @@ def main():
         
     btn_play = Button("PLAY", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2, action=start_game)
     btn_quit = Button("QUIT", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 80, bg_color=RED, hover_color=(200, 50, 50))
-    # Actually, proper way for closure variable:
+    
     def quit_game():
         nonlocal running
         running = False
@@ -166,9 +183,9 @@ def main():
     # Events
     ADDENEMY = pygame.USEREVENT + 1
     pygame.time.set_timer(ADDENEMY, ENEMY_SPAWN_RATE)
-    
+        
     while running:
-        dt = clock.tick(FPS) / 1000.0 # Delta time in seconds if needed, but we use frames mostly
+        dt = clock.tick(FPS) / 1000.0
         current_time = pygame.time.get_ticks()
         
         # 1. Event Handling
@@ -176,7 +193,6 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             
-            # Pass events to UI buttons based on state
             if game_state == "MENU":
                 btn_play.handle_event(event)
                 btn_quit.handle_event(event)
@@ -202,9 +218,11 @@ def main():
         
         if game_state == "MENU":
             title_text.update()
+            hs_text_menu.text = f"HIGH SCORE: {high_score}"
+            hs_text_menu.update()
             btn_play.update()
             btn_quit.update()
-            stars.update() # Keep stars moving
+            stars.update()
             particles.update()
 
         elif game_state == "PLAYING" and not paused:
@@ -212,9 +230,10 @@ def main():
             mouse_pos = pygame.mouse.get_pos()
             if player.shoot(current_time, bullets, lambda x, y, d=None: bullets.add(Bullet(x, y, d)), target_pos=mouse_pos):
                 if assets['shoot_sound']: assets['shoot_sound'].play()
-                all_sprites.add(bullets.sprites()[-1])
+                for b in bullets: # Add all new bullets from the last group addition? 
+                    # Actually shoot adds to group. We just need to ensure they are in all_sprites
+                    if b not in all_sprites: all_sprites.add(b)
 
-            # Player update with particle callback
             player.update(create_particle)
             mobs.update()
             bullets.update()
@@ -229,9 +248,14 @@ def main():
             hits = pygame.sprite.groupcollide(mobs, bullets, True, True)
             for hit in hits:
                 score += 100
+                
+                # Power-up check
+                if score >= 3500:
+                    player.bullet_count = 5
+
                 if assets['explosion_sound']: assets['explosion_sound'].play()
                 spawn_explosion(hit.rect.center, ORANGE)
-                shaker.shake(5, 5) # Small shake
+                shaker.shake(5, 5)
 
             # Collisions: Player <-> Enemy
             hits = pygame.sprite.spritecollide(player, mobs, True)
@@ -239,17 +263,20 @@ def main():
                 player.lives -= 1
                 if assets['explosion_sound']: assets['explosion_sound'].play()
                 spawn_explosion(hit.rect.center, RED, 20)
-                shaker.shake(15, 15) # Big shake
+                shaker.shake(15, 15)
                 if player.lives <= 0:
                     game_state = "GAMEOVER"
-                    spawn_explosion(player.rect.center, CYAN, 50) # Huge player explosion
+                    spawn_explosion(player.rect.center, CYAN, 50)
+                    if score > high_score:
+                        high_score = score
+                        save_high_score(high_score)
         
         elif game_state == "GAMEOVER":
             go_text.update()
             btn_retry.update()
             btn_menu.update()
             stars.update()
-            particles.update() 
+            particles.update()
 
         # Get screen shake offset
         shake_offset = shaker.get_offset()
@@ -267,7 +294,7 @@ def main():
             star.draw(screen, shake_offset)
 
         # Draw Sprites
-        if game_state == "PLAYING" or (game_state == "GAMEOVER" and player.lives > 0): # Draw remains if just paused?
+        if game_state == "PLAYING" or (game_state == "GAMEOVER" and player.lives > 0):
              for sprite in all_sprites:
                  screen.blit(sprite.image, (sprite.rect.x + shake_offset[0], sprite.rect.y + shake_offset[1]))
         
@@ -283,10 +310,10 @@ def main():
             screen.blit(s, (0,0))
             
             title_text.draw(screen)
+            hs_text_menu.draw(screen)
             btn_play.draw(screen)
             btn_quit.draw(screen)
             
-            # Reset instructions
             draw_neon_text(screen, "Mouse to Aim/Shoot", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT - 40)
 
         elif game_state == "PLAYING":
@@ -314,6 +341,7 @@ def main():
              
              go_text.draw(screen)
              draw_neon_text(screen, f"FINAL SCORE: {score}", assets['font_large'], WHITE, SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 40)
+             draw_neon_text(screen, f"HIGH SCORE: {high_score}", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 10)
              
              btn_retry.draw(screen)
              btn_menu.draw(screen)

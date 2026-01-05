@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "D:\Internship Project\PyGame project\space_shooter_game\main.py", line 266, in <module>
+    main()
+    ~~~~^^
+  File "D:\Internship Project\PyGame project\space_shooter_game\main.py", line 155, in main
+    btn_play.update()
+    ^^^^^^^^
+NameError: name 'btn_play' is not defined
