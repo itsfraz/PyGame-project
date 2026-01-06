@@ -8,10 +8,18 @@ class Player(pygame.sprite.Sprite):
         super().__init__()
         # Load image or fallback to surface
         try:
-            image_path = os.path.join(IMAGE_DIR, "player.png")
-            self.image = pygame.image.load(image_path).convert_alpha()
+            # Try to load the new player image
+            image_path = os.path.join(IMAGE_DIR, "player_new.png")
+            # If player_new doesn't exist, try falling back to player.png
+            if not os.path.exists(image_path):
+                image_path = os.path.join(IMAGE_DIR, "player.png")
+
+            self.image = pygame.image.load(image_path).convert()
+            # Set colorkey to remove background (assumes top-left pixel is background color)
+            self.image.set_colorkey(self.image.get_at((0, 0)))
             self.image = pygame.transform.scale(self.image, (PLAYER_WIDTH, PLAYER_HEIGHT))
-        except (FileNotFoundError, pygame.error):
+        except (FileNotFoundError, pygame.error) as e:
+            print(f"Error loading player image: {e}")
             self.image = pygame.Surface((PLAYER_WIDTH, PLAYER_HEIGHT))
             self.image.fill(GREEN)
         
