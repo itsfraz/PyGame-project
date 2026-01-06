@@ -59,6 +59,13 @@ ENEMY_WIDTH = 45
 ENEMY_HEIGHT = 45
 ENEMY_SPAWN_RATE = 1500  # More intense
 
+# Meteor Settings
+METEOR_MIN_SPEED = 2
+METEOR_MAX_SPEED = 6
+METEOR_MIN_SIZE = 30
+METEOR_MAX_SIZE = 80
+METEOR_COLOR = (139, 69, 19) # Brown
+
 # Boss Settings
 BOSS_SPAWN_SCORE = 5000
 BOSS_HP = 100
@@ -81,3 +88,6 @@ POWERUP_COLORS = {
     'rapid_fire': (255, 255, 0) # Yellow
 }
 POWERUP_DURATION = 5000 # 5 seconds for temporary effects
+
+# Wave Settings
+WAVE_REST_DURATION = 3000 # 3 seconds

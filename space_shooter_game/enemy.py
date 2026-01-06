@@ -128,9 +128,58 @@ class Enemy(pygame.sprite.Sprite):
         if self.rect.top > SCREEN_HEIGHT + 10:
             self.kill()
 
-    def take_damage(self, amount=1):
+    def take_damage(self, amount):
         self.hp -= amount
         return self.hp <= 0
+
+class Meteor(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        # Random size
+        size = random.randint(METEOR_MIN_SIZE, METEOR_MAX_SIZE)
+        
+        # Image
+        try:
+             image_path = os.path.join(IMAGE_DIR, "meteor.png")
+             if os.path.exists(image_path):
+                 self.image = pygame.image.load(image_path).convert_alpha()
+                 self.image = pygame.transform.scale(self.image, (size, size))
+             else: raise FileNotFoundError
+        except:
+             self.image = pygame.Surface((size, size))
+             self.image.fill(METEOR_COLOR)
+             # Draw some crater details
+             pygame.draw.circle(self.image, (100, 50, 10), (size//3, size//3), size//6)
+             pygame.draw.circle(self.image, (100, 50, 10), (size - size//3, size - size//3), size//5)
+        
+        self.original_image = self.image
+        self.rect = self.image.get_rect()
+        self.rect.x = random.randrange(0, SCREEN_WIDTH - size)
+        self.rect.y = random.randrange(-150, -100)
+        
+        self.speed_y = random.randint(METEOR_MIN_SPEED, METEOR_MAX_SPEED)
+        self.speed_x = random.uniform(-1, 1)
+        
+        self.rot = 0
+        self.rot_speed = random.randint(-5, 5)
+        self.last_update = pygame.time.get_ticks()
+
+    def update(self, *args):
+        # Rotate
+        now = pygame.time.get_ticks()
+        if now - self.last_update > 50:
+            self.last_update = now
+            self.rot = (self.rot + self.rot_speed) % 360
+            self.image = pygame.transform.rotate(self.original_image, self.rot)
+            old_center = self.rect.center
+            self.rect = self.image.get_rect()
+            self.rect.center = old_center
+
+        self.rect.y += self.speed_y
+        self.rect.x += self.speed_x
+        
+        if self.rect.top > SCREEN_HEIGHT + 10 or self.rect.right < -20 or self.rect.left > SCREEN_WIDTH + 20:
+             self.kill()
 
 class Boss(pygame.sprite.Sprite):
     def __init__(self, hp_override=None):

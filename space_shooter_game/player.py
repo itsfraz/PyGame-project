@@ -63,14 +63,33 @@ class Player(pygame.sprite.Sprite):
             self.rect.right = SCREEN_WIDTH
 
         # Engine Particles
-        if create_particle_callback and random.random() < 0.5:
+        if create_particle_callback:
+            # 1. Engine Trail (Always active when moving or just always active for engine idle)
             # Emit from bottom center
-            # Add some randomness to X
             offset_x = random.randint(-5, 5)
             pos = (self.rect.centerx + offset_x, self.rect.bottom - 5)
-            # Vector pointing down
-            vec = pygame.math.Vector2(0, 1)
-            create_particle_callback(pos, CYAN, random.randint(2, 5), random.randint(2, 4), vector=vec)
+            vec = pygame.math.Vector2(0, random.uniform(1, 3)) # Downward
+            
+            # Color based on speed or random neon
+            p_color = CYAN
+            if random.random() < 0.3: p_color = WHITE
+            
+            create_particle_callback(pos, p_color, random.randint(2, 5), random.randint(2, 4), vector=vec)
+            
+            # 2. Damage Smoke (Low Health)
+            if self.lives == 1:
+                # Random position on ship
+                smoke_pos = (
+                    self.rect.x + random.randint(0, self.rect.width),
+                    self.rect.y + random.randint(0, self.rect.height)
+                )
+                smoke_vec = pygame.math.Vector2(random.uniform(-0.5, 0.5), -1) # Upward smoke
+                # Grey/Dark Grey
+                smoke_color = (100, 100, 100)
+                if random.random() < 0.2: smoke_color = (50, 50, 50) # Darker
+                elif random.random() < 0.1: smoke_color = ORANGE # Spark
+                
+                create_particle_callback(smoke_pos, smoke_color, random.randint(1, 3), random.randint(3, 8), vector=smoke_vec)
 
     def shoot(self, current_time, bullet_group, create_bullet_callback, target_pos=None):
         if current_time - self.last_shot_time >= self.shoot_delay:

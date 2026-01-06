@@ -6,14 +6,196 @@ import math
 import traceback
 from settings import *
 from player import Player
-from enemy import Enemy, Boss
+from enemy import Enemy, Boss, Meteor
+from bullet import Bullet
+from vfx import Particle, ScreenShake, Star, BackgroundObject
+from ui import AnimatedText, Button, HealthBar
+from powerups import PowerUp
 
-# ... imports ...
+# Initialize Pygame
+pygame.init()
+pygame.mixer.init()
+
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.DOUBLEBUF)
+pygame.display.set_caption(TITLE)
+clock = pygame.time.Clock()
+
+class HUD:
+    def __init__(self, assets):
+        self.assets = assets
+        self.score_surf = None
+        self.lives_surf = None
+        self.update_score(0)
+        self.update_lives(3)
+
+    def update_score(self, score):
+        # Render to a temporary surface large enough
+        s = pygame.Surface((300, 60), pygame.SRCALPHA)
+        draw_neon_text(s, f"SCORE: {score}", self.assets['font_ui'], WHITE, 280, 30, "ne")
+        self.score_surf = s
+
+    def update_lives(self, lives):
+        s = pygame.Surface((150, 60), pygame.SRCALPHA)
+        draw_neon_text(s, "LIVES", self.assets['font_ui'], WHITE, 75, 30, "center")
+        self.lives_surf = s
+
+    def draw(self, screen):
+        if self.score_surf:
+            screen.blit(self.score_surf, (SCREEN_WIDTH - 300, 0))
+        if self.lives_surf:
+            screen.blit(self.lives_surf, (0, 15))
+
+
+def draw_neon_text(surface, text, font, color, x, y, align="center", glow_color=None):
+    if glow_color is None:
+        glow_color = color
+        
+    for offset in [(-2, -2), (2, 2), (-2, 2), (2, -2)]:
+        glow_surf = font.render(text, True, glow_color)
+        glow_rect = glow_surf.get_rect()
+        if align == "center":
+            glow_rect.center = (x + offset[0], y + offset[1])
+        elif align == "nw":
+            glow_rect.topleft = (x + offset[0], y + offset[1])
+        elif align == "ne":
+            glow_rect.topright = (x + offset[0], y + offset[1])
+        glow_surf.set_alpha(100)
+        surface.blit(glow_surf, glow_rect)
+        
+    text_surface = font.render(text, True, color)
+    text_rect = text_surface.get_rect()
+    if align == "nw":
+        text_rect.topleft = (x, y)
+    elif align == "ne":
+        text_rect.topright = (x, y)
+    elif align == "center":
+        text_rect.center = (x, y)
+    surface.blit(text_surface, text_rect)
+    return text_rect
+
+def load_assets():
+    assets = {}
+    font_name = pygame.font.match_font('impact') or pygame.font.match_font('arial')
+    assets['font_ui'] = pygame.font.Font(font_name, UI_FONT_SIZE)
+    assets['font_large'] = pygame.font.Font(font_name, GAME_OVER_FONT_SIZE)
+    assets['font_xl'] = pygame.font.Font(font_name, 80)
+    
+    try:
+        assets['shoot_sound'] = pygame.mixer.Sound(os.path.join(SOUND_DIR, "shoot.wav"))
+        assets['shoot_sound'].set_volume(0.4)
+    except: assets['shoot_sound'] = None
+        
+    try:
+        assets['explosion_sound'] = pygame.mixer.Sound(os.path.join(SOUND_DIR, "explosion.wav"))
+        assets['explosion_sound'].set_volume(0.5)
+    except: assets['explosion_sound'] = None
+
+    try:
+        pygame.mixer.music.load(os.path.join(SOUND_DIR, "bg_music.mp3"))
+        pygame.mixer.music.set_volume(0.3)
+    except: pass
+
+    try:
+        bg_img = pygame.image.load(os.path.join(IMAGE_DIR, "background.png")).convert()
+        assets['bg_image'] = pygame.transform.scale(bg_img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+    except:
+        assets['bg_image'] = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        assets['bg_image'].fill(DARK_BLUE)
+
+    return assets
+
+def get_high_score():
+    try:
+        with open("highscore.txt", "r") as f:
+            return int(f.read())
+    except:
+        return 0
+
+def save_high_score(new_score):
+    try:
+        with open("highscore.txt", "w") as f:
+            f.write(str(new_score))
+    except:
+        pass
+
+class WaveManager:
+    def __init__(self):
+        self.wave_index = 0
+        self.waves = [
+            {'name': "Wave 1 - Invasion", 'count': 20, 'rate': 1500, 'type': 'basic'},
+            {'name': "Wave 2 - Assault", 'count': 30, 'rate': 1200, 'type': 'fast'}, 
+            {'name': "Wave 3 - Meteor Shower", 'count': 40, 'rate': 600, 'type': 'meteor'},
+        ]
+        # Infinite waves start after
+        self.infinite_mode = False
+        
+        self.state = "SPAWNING" # SPAWNING, CLEARING, RESTING
+        self.spawned_count = 0
+        self.last_spawn_time = 0
+        self.rest_start_time = 0
+
+    def reset(self):
+        self.wave_index = 0
+        self.state = "SPAWNING"
+        self.spawned_count = 0
+        self.last_spawn_time = 0
+        self.infinite_mode = False
+
+    def update(self, current_time, active_mobs_count, active_boss):
+        if active_boss:
+            return None # Pause everything
+
+        if self.infinite_mode:
+            # Simple random logic
+             if current_time - self.last_spawn_time > 1000:
+                self.last_spawn_time = current_time
+                return 'random'
+             return None
+
+        # Logic
+        wave_data = self.waves[self.wave_index]
+        
+        if self.state == "SPAWNING":
+            if self.spawned_count < wave_data['count']:
+                if current_time - self.last_spawn_time > wave_data['rate']:
+                    self.last_spawn_time = current_time
+                    self.spawned_count += 1
+                    return wave_data['type']
+            else:
+                self.state = "CLEARING"
+
+        elif self.state == "CLEARING":
+            if active_mobs_count == 0:
+                self.state = "RESTING"
+                self.rest_start_time = current_time
+
+        elif self.state == "RESTING":
+            if current_time - self.rest_start_time > WAVE_REST_DURATION:
+                self.next_wave()
+        
+        return None
+
+    def next_wave(self):
+        self.wave_index += 1
+        if self.wave_index >= len(self.waves):
+            self.infinite_mode = True
+        else:
+            self.state = "SPAWNING"
+            self.spawned_count = 0
+            self.last_spawn_time = pygame.time.get_ticks()
+
+    def get_info(self):
+        if self.infinite_mode:
+            return "WAVE ∞"
+        if self.state == "RESTING":
+            return "WAVE COMPLETE"
+        return f"{self.waves[self.wave_index]['name']} ({self.spawned_count}/{self.waves[self.wave_index]['count']})"
 
 def main():
     assets = load_assets()
     high_score = get_high_score()
     hud = HUD(assets)
+    wave_manager = WaveManager()
     
     # Groups
     all_sprites = pygame.sprite.Group()
@@ -24,6 +206,8 @@ def main():
     powerups = pygame.sprite.Group()
     enemy_bullets = pygame.sprite.Group()
     boss_group = pygame.sprite.Group() # New group for Boss
+    meteors = pygame.sprite.Group() # Separate group for meteors
+    bg_objects = pygame.sprite.Group() # Dynamic background objects
     
     # Create Stars
     for _ in range(50):
@@ -53,6 +237,7 @@ def main():
     title_text = AnimatedText(TITLE.upper(), assets['font_xl'], CYAN, SCREEN_WIDTH/2, SCREEN_HEIGHT/4, pulse_speed=0.05)
     hs_text_menu = AnimatedText(f"HIGH SCORE: {high_score}", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT/4 + 60, pulse_speed=0.02)
     
+
     def start_game():
         nonlocal game_state, score, player, boss_active, next_boss_score
         game_state = "PLAYING"
@@ -63,18 +248,24 @@ def main():
         powerups.empty() 
         enemy_bullets.empty()
         boss_group.empty()
+        meteors.empty()
+        bg_objects.empty()
         
         player = Player()
         all_sprites.add(player)
         score = 0
         hud.update_score(0)
         hud.update_lives(player.lives)
+        health_bar.set_value(player.lives)
         
         boss_active = False
         next_boss_score = BOSS_SPAWN_SCORE
         
+        wave_manager.reset()
+        
     btn_play = Button("PLAY", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2, action=start_game)
     btn_quit = Button("QUIT", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 80, bg_color=RED, hover_color=(200, 50, 50))
+
     
     def quit_game():
         nonlocal running
@@ -109,8 +300,8 @@ def main():
         except: pass
         
     # Events
-    ADDENEMY = pygame.USEREVENT + 1
-    pygame.time.set_timer(ADDENEMY, ENEMY_SPAWN_RATE)
+    # ADDENEMY = pygame.USEREVENT + 1
+    # pygame.time.set_timer(ADDENEMY, ENEMY_SPAWN_RATE)
         
     while running:
         dt = clock.tick(FPS) / 1000.0
@@ -135,12 +326,6 @@ def main():
                         paused = not paused
                     if event.key == pygame.K_ESCAPE:
                         game_state = "MENU"
-
-                # Condition spawning on no boss
-                if event.type == ADDENEMY and not paused and not boss_active:
-                    new_enemy = Enemy(score)
-                    mobs.add(new_enemy)
-                    all_sprites.add(new_enemy)
                     
         # 2. Update
         shake_offset = (0, 0)
@@ -155,6 +340,29 @@ def main():
             particles.update()
 
         elif game_state == "PLAYING" and not paused:
+            # Random Background Object Spawn (Nebula or Planet)
+            if random.random() < 0.001: # 0.1% chance per frame (~once every 16 seconds at 60fps? No, 60 * 0.001 = 0.06 per sec. Once every 16 secs approx)
+                new_bg = BackgroundObject([bg_objects], random.choice(['planet', 'nebula']))
+
+            # Wave Logic
+            active_mobs_count = len(mobs) + len(meteors)
+            spawn_type = wave_manager.update(current_time, active_mobs_count, boss_active)
+            
+            if spawn_type:
+                 if spawn_type == 'meteor':
+                     m = Meteor()
+                     meteors.add(m)
+                     all_sprites.add(m)
+                 else:
+                     etype = None
+                     if spawn_type == 'fast': etype = 'chaser'
+                     elif spawn_type == 'basic': etype = 'basic'
+                     elif spawn_type == 'random': etype = None
+                     
+                     new_enemy = Enemy(score, enemy_type=etype)
+                     mobs.add(new_enemy)
+                     all_sprites.add(new_enemy)
+
             # Check Boss Spawn
             if score >= next_boss_score and not boss_active:
                 boss_active = True
@@ -172,10 +380,12 @@ def main():
 
             player.update(create_particle)
             mobs.update(player.rect, enemy_bullets)
+            meteors.update()
             boss_group.update(enemy_bullets) # Boss updates with bullet group
             bullets.update()
             enemy_bullets.update()
             stars.update()
+            bg_objects.update()
             particles.update()
             powerups.update()
             
@@ -228,6 +438,31 @@ def main():
                 
                 if score >= 3500:
                     player.bullet_count = 5
+
+            # Handle Meteors Collision with Bullets
+            hits = pygame.sprite.groupcollide(meteors, bullets, False, True)
+            for m, hit_bullets in hits.items():
+                for b in hit_bullets:
+                    create_particle(b.rect.center, (100, 100, 100), 2, 2)
+            
+            # Collisions: Player <-> Meteors
+            hits = pygame.sprite.spritecollide(player, meteors, True)
+            for hit in hits:
+                 if player.has_shield:
+                    spawn_explosion(hit.rect.center, BLUE, 30)
+                    shaker.shake(10, 10)
+                 else:
+                    player.lives -= 1
+                    hud.update_lives(player.lives)
+                    if assets['explosion_sound']: assets['explosion_sound'].play()
+                    spawn_explosion(hit.rect.center, (139, 69, 19), 30)
+                    shaker.shake(20, 20)
+                    if player.lives <= 0:
+                        game_state = "GAMEOVER"
+                        spawn_explosion(player.rect.center, CYAN, 50)
+                        if score > high_score:
+                            high_score = score
+                            save_high_score(high_score)
 
             # Collision: Bullet <-> Boss
             if boss_active:
@@ -314,6 +549,9 @@ def main():
             
         for star in stars:
             star.draw(screen, shake_offset)
+            
+        for bg_obj in bg_objects:
+            screen.blit(bg_obj.image, (bg_obj.rect.x + shake_offset[0], bg_obj.rect.y + shake_offset[1]))
 
         if game_state == "PLAYING" or (game_state == "GAMEOVER" and player.lives > 0):
              for sprite in all_sprites:
@@ -339,6 +577,9 @@ def main():
         elif game_state == "PLAYING":
              hud.draw(screen)
              health_bar.draw(screen)
+             
+             # Draw Wave Info
+             draw_neon_text(screen, wave_manager.get_info(), assets['font_ui'], WHITE, SCREEN_WIDTH//2, 20)
              
              if boss_active:
                  boss_health_bar.update()

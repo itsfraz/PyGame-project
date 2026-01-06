@@ -114,3 +114,40 @@ class Star(pygame.sprite.Sprite):
             except Exception as e:
                 # Log but don't crash
                  print(f"Star Draw Error: {e}")
+
+class BackgroundObject(pygame.sprite.Sprite):
+    def __init__(self, groups, image_type='planet'):
+        super().__init__(groups)
+        self.image_type = image_type
+        
+        # Random size and speed for parallax
+        self.z_depth = random.uniform(0.2, 0.8) # 0.2 is far/slow, 0.8 is near/faster
+        size = int(random.randint(50, 150) * self.z_depth)
+        self.speed = 1.0 * self.z_depth
+        
+        self.image = pygame.Surface((size, size), pygame.SRCALPHA)
+        
+        if image_type == 'planet':
+            # Draw a planet
+            color = random.choice([(100, 100, 200), (200, 100, 100), (100, 200, 100), (150, 150, 150)])
+            pygame.draw.circle(self.image, color, (size//2, size//2), size//2)
+            # Add some shading?
+            pygame.draw.circle(self.image, (0,0,0, 50), (size//2 + 10, size//2 + 10), size//2 - 5)
+            
+        elif image_type == 'nebula':
+            # Draw a cloud-like blob
+            color = random.choice([(100, 0, 100, 50), (0, 0, 100, 50), (100, 0, 0, 50)])
+            for _ in range(5):
+                cx = random.randint(0, size)
+                cy = random.randint(0, size)
+                cr = random.randint(size//4, size//2)
+                pygame.draw.circle(self.image, color, (cx, cy), cr)
+        
+        self.rect = self.image.get_rect()
+        self.rect.x = random.randint(0, SCREEN_WIDTH - size)
+        self.rect.y = -size - 50
+        
+    def update(self):
+        self.rect.y += self.speed
+        if self.rect.top > SCREEN_HEIGHT:
+            self.kill()
