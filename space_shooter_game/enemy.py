@@ -5,18 +5,30 @@ import math
 from settings import *
 
 class EnemyBullet(pygame.sprite.Sprite):
-    def __init__(self, x, y):
+    def __init__(self, x, y, dx=0, dy=1, speed=None):
         super().__init__()
         self.image = pygame.Surface((6, 15))
         self.image.fill(RED)
         self.rect = self.image.get_rect()
         self.rect.centerx = x
         self.rect.top = y
-        self.speed = 4
+        self.dx = dx
+        self.dy = dy
+        self.speed = speed if speed else 4
+        
+        # Rotate image if moving sideways significantly
+        if dx != 0:
+            angle = -math.degrees(math.atan2(dy, dx)) - 90
+            self.image = pygame.transform.rotate(self.image, angle)
 
     def update(self):
-        self.rect.y += self.speed
-        if self.rect.top > SCREEN_HEIGHT:
+        self.rect.x += self.dx * self.speed
+        self.rect.y += self.dy * self.speed
+        
+        if (self.rect.top > SCREEN_HEIGHT or 
+            self.rect.bottom < 0 or 
+            self.rect.right < 0 or 
+            self.rect.left > SCREEN_WIDTH):
             self.kill()
 
 class Enemy(pygame.sprite.Sprite):
@@ -117,5 +129,98 @@ class Enemy(pygame.sprite.Sprite):
             self.kill()
 
     def take_damage(self, amount=1):
+        self.hp -= amount
+        return self.hp <= 0
+
+class Boss(pygame.sprite.Sprite):
+    def __init__(self, hp_override=None):
+        super().__init__()
+        self.hp = hp_override if hp_override else BOSS_HP
+        self.max_hp = self.hp
+        
+        width, height = BOSS_WIDTH, BOSS_HEIGHT
+        
+        # Try to load boss image or fallback
+        try:
+             image_path = os.path.join(IMAGE_DIR, "boss.png")
+             if os.path.exists(image_path):
+                 self.image = pygame.image.load(image_path).convert_alpha()
+                 self.image = pygame.transform.scale(self.image, (width, height))
+             else: raise FileNotFoundError
+        except:
+             self.image = pygame.Surface((width, height))
+             self.image.fill(BOSS_COLOR)
+             # Draw some "eyes"
+             pygame.draw.rect(self.image, YELLOW, (20, 50, 20, 20))
+             pygame.draw.rect(self.image, YELLOW, (width-40, 50, 20, 20))
+        
+        self.rect = self.image.get_rect()
+        self.rect.centerx = SCREEN_WIDTH // 2
+        self.rect.y = -150
+        
+        self.state = "ENTERING" # ENTERING, FIGHTING
+        self.target_y = 50
+        self.speed_x = BOSS_SPEED
+        
+        self.last_attack_time = pygame.time.get_ticks()
+        self.attack_cooldown = 2000 # 2 seconds between patterns
+
+    def update(self, enemy_bullets_group):
+        if self.state == "ENTERING":
+            self.rect.y += 2
+            if self.rect.y >= self.target_y:
+                self.state = "FIGHTING"
+                
+        elif self.state == "FIGHTING":
+            # Move side to side
+            self.rect.x += self.speed_x
+            if self.rect.right > SCREEN_WIDTH or self.rect.left < 0:
+                self.speed_x *= -1
+                
+            # Attacks
+            now = pygame.time.get_ticks()
+            if now - self.last_attack_time > self.attack_cooldown:
+                self.last_attack_time = now
+                pattern = random.choice(['spread', 'sweep', 'circle'])
+                
+                if pattern == 'spread':
+                    self.attack_spread(enemy_bullets_group)
+                elif pattern == 'sweep':
+                    self.attack_sweep(enemy_bullets_group)
+                elif pattern == 'circle':
+                    self.attack_circle(enemy_bullets_group)
+
+    def attack_spread(self, group):
+        # 5 bullets in a cone
+        start_x = self.rect.centerx
+        start_y = self.rect.bottom
+        for i in range(-2, 3): # -2, -1, 0, 1, 2
+            dx = i * 0.3
+            dy = 1
+            group.add(EnemyBullet(start_x, start_y, dx, dy, speed=6))
+
+    def attack_sweep(self, group):
+        # Just fire rapidly across?
+        # Let's do a simple 3-wave burst for now
+        start_x = self.rect.centerx
+        start_y = self.rect.bottom
+        # We can't do a time-based sweep easily without state, so let's do a static "shotgun" blast
+        for i in range(10):
+            dx = random.uniform(-1, 1)
+            dy = random.uniform(0.5, 1.5)
+            group.add(EnemyBullet(start_x, start_y, dx, dy, speed=7))
+
+    def attack_circle(self, group):
+        start_x = self.rect.centerx
+        start_y = self.rect.centery
+        count = 12
+        for i in range(count):
+            angle = (360 / count) * i
+            rad = math.radians(angle)
+            dx = math.cos(rad)
+            dy = math.sin(rad)
+            group.add(EnemyBullet(start_x, start_y, dx, dy, speed=5))
+
+    def take_damage(self, amount):
         self.hp -= amount
         return self.hp <= 0

@@ -6,117 +6,9 @@ import math
 import traceback
 from settings import *
 from player import Player
-from enemy import Enemy
-from bullet import Bullet
-from vfx import Particle, ScreenShake, Star
-from ui import AnimatedText, Button, HealthBar
-from powerups import PowerUp
+from enemy import Enemy, Boss
 
-# Initialize Pygame
-pygame.init()
-pygame.mixer.init()
-
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.DOUBLEBUF)
-pygame.display.set_caption(TITLE)
-clock = pygame.time.Clock()
-
-class HUD:
-    def __init__(self, assets):
-        self.assets = assets
-        self.score_surf = None
-        self.lives_surf = None
-        self.update_score(0)
-        self.update_lives(3)
-
-    def update_score(self, score):
-        # Render to a temporary surface large enough
-        s = pygame.Surface((300, 60), pygame.SRCALPHA)
-        draw_neon_text(s, f"SCORE: {score}", self.assets['font_ui'], WHITE, 280, 30, "ne")
-        self.score_surf = s
-
-    def update_lives(self, lives):
-        s = pygame.Surface((150, 60), pygame.SRCALPHA)
-        draw_neon_text(s, "LIVES", self.assets['font_ui'], WHITE, 75, 30, "center")
-        self.lives_surf = s
-
-    def draw(self, screen):
-        if self.score_surf:
-            screen.blit(self.score_surf, (SCREEN_WIDTH - 300, 0))
-        if self.lives_surf:
-            screen.blit(self.lives_surf, (0, 15))
-
-
-def draw_neon_text(surface, text, font, color, x, y, align="center", glow_color=None):
-    if glow_color is None:
-        glow_color = color
-        
-    for offset in [(-2, -2), (2, 2), (-2, 2), (2, -2)]:
-        glow_surf = font.render(text, True, glow_color)
-        glow_rect = glow_surf.get_rect()
-        if align == "center":
-            glow_rect.center = (x + offset[0], y + offset[1])
-        elif align == "nw":
-            glow_rect.topleft = (x + offset[0], y + offset[1])
-        elif align == "ne":
-            glow_rect.topright = (x + offset[0], y + offset[1])
-        glow_surf.set_alpha(100)
-        surface.blit(glow_surf, glow_rect)
-        
-    text_surface = font.render(text, True, color)
-    text_rect = text_surface.get_rect()
-    if align == "nw":
-        text_rect.topleft = (x, y)
-    elif align == "ne":
-        text_rect.topright = (x, y)
-    elif align == "center":
-        text_rect.center = (x, y)
-    surface.blit(text_surface, text_rect)
-    return text_rect
-
-def load_assets():
-    assets = {}
-    font_name = pygame.font.match_font('impact') or pygame.font.match_font('arial')
-    assets['font_ui'] = pygame.font.Font(font_name, UI_FONT_SIZE)
-    assets['font_large'] = pygame.font.Font(font_name, GAME_OVER_FONT_SIZE)
-    assets['font_xl'] = pygame.font.Font(font_name, 80)
-    
-    try:
-        assets['shoot_sound'] = pygame.mixer.Sound(os.path.join(SOUND_DIR, "shoot.wav"))
-        assets['shoot_sound'].set_volume(0.4)
-    except: assets['shoot_sound'] = None
-        
-    try:
-        assets['explosion_sound'] = pygame.mixer.Sound(os.path.join(SOUND_DIR, "explosion.wav"))
-        assets['explosion_sound'].set_volume(0.5)
-    except: assets['explosion_sound'] = None
-
-    try:
-        pygame.mixer.music.load(os.path.join(SOUND_DIR, "bg_music.mp3"))
-        pygame.mixer.music.set_volume(0.3)
-    except: pass
-
-    try:
-        bg_img = pygame.image.load(os.path.join(IMAGE_DIR, "background.png")).convert()
-        assets['bg_image'] = pygame.transform.scale(bg_img, (SCREEN_WIDTH, SCREEN_HEIGHT))
-    except:
-        assets['bg_image'] = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        assets['bg_image'].fill(DARK_BLUE)
-
-    return assets
-
-def get_high_score():
-    try:
-        with open("highscore.txt", "r") as f:
-            return int(f.read())
-    except:
-        return 0
-
-def save_high_score(new_score):
-    try:
-        with open("highscore.txt", "w") as f:
-            f.write(str(new_score))
-    except:
-        pass
+# ... imports ...
 
 def main():
     assets = load_assets()
@@ -131,6 +23,7 @@ def main():
     stars = pygame.sprite.Group() # Parallax stars
     powerups = pygame.sprite.Group()
     enemy_bullets = pygame.sprite.Group()
+    boss_group = pygame.sprite.Group() # New group for Boss
     
     # Create Stars
     for _ in range(50):
@@ -145,6 +38,10 @@ def main():
     game_state = "MENU"
     paused = False
     
+    # Boss Logic
+    boss_active = False
+    next_boss_score = BOSS_SPAWN_SCORE
+    
     # Bg Scroll
     bg_y = 0
     
@@ -157,7 +54,7 @@ def main():
     hs_text_menu = AnimatedText(f"HIGH SCORE: {high_score}", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT/4 + 60, pulse_speed=0.02)
     
     def start_game():
-        nonlocal game_state, score, player
+        nonlocal game_state, score, player, boss_active, next_boss_score
         game_state = "PLAYING"
         all_sprites.empty()
         mobs.empty()
@@ -165,11 +62,16 @@ def main():
         particles.empty()
         powerups.empty() 
         enemy_bullets.empty()
+        boss_group.empty()
+        
         player = Player()
         all_sprites.add(player)
         score = 0
         hud.update_score(0)
         hud.update_lives(player.lives)
+        
+        boss_active = False
+        next_boss_score = BOSS_SPAWN_SCORE
         
     btn_play = Button("PLAY", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2, action=start_game)
     btn_quit = Button("QUIT", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 80, bg_color=RED, hover_color=(200, 50, 50))
@@ -181,6 +83,7 @@ def main():
 
     # HUD
     health_bar = HealthBar(20, 20, 200, 20, max_value=PLAYER_LIVES, color=GREEN)
+    boss_health_bar = HealthBar(SCREEN_WIDTH//2 - 150, 60, 300, 20, max_value=BOSS_HP, color=PURPLE)
     
     # Game Over
     go_text = AnimatedText("MISSION FAILED", assets['font_xl'], RED, SCREEN_WIDTH/2, SCREEN_HEIGHT/3, pulse_speed=0.02)
@@ -233,7 +136,8 @@ def main():
                     if event.key == pygame.K_ESCAPE:
                         game_state = "MENU"
 
-                if event.type == ADDENEMY and not paused:
+                # Condition spawning on no boss
+                if event.type == ADDENEMY and not paused and not boss_active:
                     new_enemy = Enemy(score)
                     mobs.add(new_enemy)
                     all_sprites.add(new_enemy)
@@ -251,16 +155,24 @@ def main():
             particles.update()
 
         elif game_state == "PLAYING" and not paused:
+            # Check Boss Spawn
+            if score >= next_boss_score and not boss_active:
+                boss_active = True
+                new_boss = Boss()
+                boss_group.add(new_boss)
+                all_sprites.add(new_boss)
+                # Ensure no other enemies are clogging the screen (optional, but requested behavior is just pause spawn)
+                
             # Auto-fire
             mouse_pos = pygame.mouse.get_pos()
             if player.shoot(current_time, bullets, lambda x, y, d=None: bullets.add(Bullet(x, y, d)), target_pos=mouse_pos):
                 if assets['shoot_sound']: assets['shoot_sound'].play()
-                for b in bullets: # Add all new bullets from the last group addition? 
-                    # Actually shoot adds to group. We just need to ensure they are in all_sprites
+                for b in bullets:
                     if b not in all_sprites: all_sprites.add(b)
 
             player.update(create_particle)
             mobs.update(player.rect, enemy_bullets)
+            boss_group.update(enemy_bullets) # Boss updates with bullet group
             bullets.update()
             enemy_bullets.update()
             stars.update()
@@ -292,21 +204,18 @@ def main():
                              high_score = score
                              save_high_score(high_score)
 
-            # Collisions: Bullet <-> Enemy (With HP Logic)
-            # Use False for killing mobs, True for bullets
+            # Collisions: Bullet <-> Enemy
             hits = pygame.sprite.groupcollide(mobs, bullets, False, True) 
             for enemy, hit_bullets in hits.items():
                 for b in hit_bullets:
                     score += 10
                     hud.update_score(score)
-                    
-                    # Small hit effect
                     create_particle(b.rect.center, ORANGE, 2, 2)
                     
-                    if enemy.take_damage(1): # If True, enemy died
+                    if enemy.take_damage(1):
                         score += 90
                         hud.update_score(score)
-                        enemy.kill() # Remove from groups
+                        enemy.kill()
                         
                         if assets['explosion_sound']: assets['explosion_sound'].play()
                         spawn_explosion(enemy.rect.center, ORANGE)
@@ -317,11 +226,36 @@ def main():
                              all_sprites.add(p)
                              powerups.add(p)
                 
-                # Global score checks
                 if score >= 3500:
                     player.bullet_count = 5
 
-            # Collisions: Player <-> Enemy
+            # Collision: Bullet <-> Boss
+            if boss_active:
+                boss_hits = pygame.sprite.groupcollide(boss_group, bullets, False, True)
+                for boss, hit_bullets in boss_hits.items():
+                    for b in hit_bullets:
+                        # Damage Boss
+                        if boss.state == "FIGHTING": # Invulnerable while entering? Maybe. Let's allow damage.
+                            create_particle(b.rect.center, PURPLE, 2, 2)
+                            is_dead = boss.take_damage(1)
+                            boss_health_bar.set_value(boss.hp)
+                            
+                            if is_dead:
+                                score += 5000
+                                hud.update_score(score)
+                                boss.kill()
+                                boss_active = False
+                                next_boss_score += 5000
+                                spawn_explosion(boss.rect.center, MAGENTA, 100)
+                                shaker.shake(20, 30)
+                                if assets['explosion_sound']: assets['explosion_sound'].play()
+                                
+                                # Spawn a guaranteed powerup
+                                p = PowerUp(boss.rect.center)
+                                all_sprites.add(p)
+                                powerups.add(p)
+
+            # Collisions: Player <-> Mobs
             hits = pygame.sprite.spritecollide(player, mobs, True)
             for hit in hits:
                 if player.has_shield:
@@ -339,7 +273,29 @@ def main():
                         if score > high_score:
                             high_score = score
                             save_high_score(high_score)
-        
+            
+            # Collisions: Player <-> Boss Body
+            if boss_active:
+                hits = pygame.sprite.spritecollide(player, boss_group, False)
+                if hits:
+                    if not player.has_shield:
+                        # Instakill or massive damage?
+                        player.lives = 0
+                        hud.update_lives(player.lives)
+                        game_state = "GAMEOVER"
+                        spawn_explosion(player.rect.center, CYAN, 50)
+                        if score > high_score:
+                             high_score = score
+                             save_high_score(high_score)
+                    else:
+                        # Bounce player back or something? Just keep taking damage if shield up?
+                        # Shield usually protects 1 hit? Let's assume shield breaks instantly on boss
+                        player.has_shield = False
+                        spawn_explosion(player.rect.center, BLUE, 30)
+                        shaker.shake(10, 10)
+                        # Push player down
+                        player.rect.y += 100
+
         elif game_state == "GAMEOVER":
             go_text.update()
             btn_retry.update()
@@ -363,7 +319,6 @@ def main():
              for sprite in all_sprites:
                  screen.blit(sprite.image, (sprite.rect.x + shake_offset[0], sprite.rect.y + shake_offset[1]))
              
-             # Manually draw enemy bullets (since not in all_sprites or need layer)
              for b in enemy_bullets:
                  screen.blit(b.image, (b.rect.x + shake_offset[0], b.rect.y + shake_offset[1]))
         
@@ -384,6 +339,13 @@ def main():
         elif game_state == "PLAYING":
              hud.draw(screen)
              health_bar.draw(screen)
+             
+             if boss_active:
+                 boss_health_bar.update()
+                 boss_health_bar.draw(screen)
+                 # Draw Boss Name
+                 draw_neon_text(screen, "WARNING: BOSS APPROACHING", assets['font_ui'], RED, SCREEN_WIDTH/2, 40)
+
 
              if paused:
                  s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -392,7 +354,6 @@ def main():
                  draw_neon_text(screen, "PAUSED", assets['font_xl'], WHITE, SCREEN_WIDTH/2, SCREEN_HEIGHT/2)
 
         elif game_state == "GAMEOVER":
-             # Draw game scene behind?
              if player.lives > 0:
                  for sprite in all_sprites:
                      screen.blit(sprite.image, (sprite.rect.x + shake_offset[0], sprite.rect.y + shake_offset[1]))

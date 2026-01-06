@@ -1,9 +1,9 @@
-Crash Timestamp: 2026-01-06 12:57:13.321482
+Crash Timestamp: 2026-01-06 13:02:34.519014
 Traceback (most recent call last):
-  File "d:\Internship Project\PyGame project\space_shooter_game\main.py", line 418, in <module>
+  File "d:\Internship Project\PyGame project\space_shooter_game\main.py", line 379, in <module>
     main()
     ~~~~^^
-  File "d:\Internship Project\PyGame project\space_shooter_game\main.py", line 414, in main
-    sys.exit()
-    ~~~~~~~~^^
-SystemExit
+  File "d:\Internship Project\PyGame project\space_shooter_game\main.py", line 14, in main
+    assets = load_assets()
+             ^^^^^^^^^^^
+NameError: name 'load_assets' is not defined
