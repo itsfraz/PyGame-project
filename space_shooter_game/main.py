@@ -47,9 +47,6 @@ class HUD:
 
 
 def draw_neon_text(surface, text, font, color, x, y, align="center", glow_color=None):
-# ... (rest of the file as before, but with HUD integration in main)
-# I will use multi_replace to target specific blocks properly
-
     if glow_color is None:
         glow_color = color
         
@@ -60,6 +57,8 @@ def draw_neon_text(surface, text, font, color, x, y, align="center", glow_color=
             glow_rect.center = (x + offset[0], y + offset[1])
         elif align == "nw":
             glow_rect.topleft = (x + offset[0], y + offset[1])
+        elif align == "ne":
+            glow_rect.topright = (x + offset[0], y + offset[1])
         glow_surf.set_alpha(100)
         surface.blit(glow_surf, glow_rect)
         
@@ -124,275 +123,14 @@ def main():
     high_score = get_high_score()
     hud = HUD(assets)
     
-    all_sprites = pygame.sprite.Group()
-    mobs = pygame.sprite.Group()
-    bullets = pygame.sprite.Group()
-    particles = pygame.sprite.Group()
-    stars = pygame.sprite.Group()
-    powerups = pygame.sprite.Group()
-    
-    for _ in range(50):
-        Star([stars])
-    
-    player = Player()
-    all_sprites.add(player)
-    
-    score = 0
-    running = True
-    game_state = "MENU"
-    paused = False
-    bg_y = 0
-    shaker = ScreenShake()
-    
-    # UI Setup
-    title_text = AnimatedText(TITLE.upper(), assets['font_xl'], CYAN, SCREEN_WIDTH/2, SCREEN_HEIGHT/4, pulse_speed=0.05)
-    hs_text_menu = AnimatedText(f"HIGH SCORE: {high_score}", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT/4 + 60, pulse_speed=0.02)
-    
-    def start_game():
-        nonlocal game_state, score, player
-        game_state = "PLAYING"
-        all_sprites.empty()
-        mobs.empty()
-        bullets.empty()
-        particles.empty()
-        powerups.empty() 
-        player = Player()
-        all_sprites.add(player)
-        score = 0
-        hud.update_score(0)
-        hud.update_lives(player.lives)
-        
-    btn_play = Button("PLAY", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2, action=start_game)
-    btn_quit = Button("QUIT", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 80, bg_color=RED, hover_color=(200, 50, 50))
-    
-    def quit_game():
-        nonlocal running
-        running = False
-    btn_quit.action = quit_game
-
-    health_bar = HealthBar(20, 20, 200, 20, max_value=PLAYER_LIVES, color=GREEN)
-    
-    go_text = AnimatedText("MISSION FAILED", assets['font_xl'], RED, SCREEN_WIDTH/2, SCREEN_HEIGHT/3, pulse_speed=0.02)
-    btn_retry = Button("RETRY", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 50, action=start_game)
-    btn_menu = Button("MENU", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 130)
-    
-    def set_state_menu():
-        nonlocal game_state
-        game_state = "MENU"
-    btn_menu.action = set_state_menu
-    
-    def create_particle(pos, color, speed, radius, vector=None):
-        Particle([particles], pos, color, speed, radius, decay=0.2, vector=vector)
-
-    def spawn_explosion(center, color=ORANGE, count=15):
-        for _ in range(count):
-            create_particle(center, color, random.randint(2, 6), random.randint(3, 6))
-
-    if pygame.mixer.music.get_busy() == False:
-        try: pygame.mixer.music.play(-1) 
-        except: pass
-        
-    ADDENEMY = pygame.USEREVENT + 1
-    pygame.time.set_timer(ADDENEMY, ENEMY_SPAWN_RATE)
-    
-    while running:
-        dt = clock.tick(FPS) / 1000.0
-        current_time = pygame.time.get_ticks()
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            
-            if game_state == "MENU":
-                btn_play.handle_event(event)
-                btn_quit.handle_event(event)
-                
-            elif game_state == "GAMEOVER":
-                btn_retry.handle_event(event)
-                btn_menu.handle_event(event)
-
-            if game_state == "PLAYING":
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_p:
-                        paused = not paused
-                    if event.key == pygame.K_ESCAPE:
-                        game_state = "MENU"
-
-                if event.type == ADDENEMY and not paused:
-                    new_enemy = Enemy(score)
-                    mobs.add(new_enemy)
-                    all_sprites.add(new_enemy)
-                    
-        shake_offset = (0, 0)
-        
-        if game_state == "MENU":
-            title_text.update()
-            hs_text_menu.text = f"HIGH SCORE: {high_score}"
-            hs_text_menu.update()
-            btn_play.update()
-            btn_quit.update()
-            stars.update()
-            particles.update()
-
-        elif game_state == "PLAYING" and not paused:
-            mouse_pos = pygame.mouse.get_pos()
-            if player.shoot(current_time, bullets, lambda x, y, d=None: bullets.add(Bullet(x, y, d)), target_pos=mouse_pos):
-                if assets['shoot_sound']: assets['shoot_sound'].play()
-                for b in bullets:
-                    if b not in all_sprites: all_sprites.add(b)
-
-            player.update(create_particle)
-            mobs.update()
-            bullets.update()
-            stars.update()
-            particles.update()
-            powerups.update()
-            
-            hits = pygame.sprite.spritecollide(player, powerups, True)
-            for hit in hits:
-                player.powerup(hit.type)
-                if hit.type == 'health':
-                    hud.update_lives(player.lives)
-            
-            hits = pygame.sprite.groupcollide(mobs, bullets, True, True)
-            for hit in hits:
-                score += 100
-                hud.update_score(score)
-                
-                if random.random() < POWERUP_SPAWN_CHANCE:
-                    p = PowerUp(hit.rect.center)
-                    all_sprites.add(p)
-                    powerups.add(p)
-
-                if score >= 3500:
-                    player.bullet_count = 5
-
-                if assets['explosion_sound']: assets['explosion_sound'].play()
-                spawn_explosion(hit.rect.center, ORANGE)
-                shaker.shake(5, 5)
-
-            hits = pygame.sprite.spritecollide(player, mobs, True)
-            for hit in hits:
-                if player.has_shield:
-                    spawn_explosion(hit.rect.center, BLUE, 20)
-                    shaker.shake(5, 5)
-                else:
-                    player.lives -= 1
-                    hud.update_lives(player.lives)
-                    if assets['explosion_sound']: assets['explosion_sound'].play()
-                    spawn_explosion(hit.rect.center, RED, 20)
-                    shaker.shake(15, 15)
-                    if player.lives <= 0:
-                        game_state = "GAMEOVER"
-                        spawn_explosion(player.rect.center, CYAN, 50)
-                        if score > high_score:
-                            high_score = score
-                            save_high_score(high_score)
-        
-        elif game_state == "GAMEOVER":
-            go_text.update()
-            btn_retry.update()
-            btn_menu.update()
-            stars.update()
-            particles.update()
-
-        shake_offset = shaker.get_offset()
-
-        rel_y = bg_y % assets['bg_image'].get_rect().height
-        screen.blit(assets['bg_image'], (0 + shake_offset[0], rel_y - assets['bg_image'].get_rect().height + shake_offset[1]))
-        if rel_y < SCREEN_HEIGHT:
-            screen.blit(assets['bg_image'], (0 + shake_offset[0], rel_y + shake_offset[1]))
-        if game_state == "PLAYING" and not paused:
-            bg_y += 1
-            
-        for star in stars:
-            star.draw(screen, shake_offset)
-
-        if game_state == "PLAYING" or (game_state == "GAMEOVER" and player.lives > 0):
-             for sprite in all_sprites:
-                 screen.blit(sprite.image, (sprite.rect.x + shake_offset[0], sprite.rect.y + shake_offset[1]))
-        
-        for p in particles:
-            p.draw(screen, shake_offset)
-
-        if game_state == "MENU":
-            s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            s.fill((0, 0, 0, 150))
-            screen.blit(s, (0,0))
-            
-            title_text.draw(screen)
-            hs_text_menu.draw(screen)
-            btn_play.draw(screen)
-            btn_quit.draw(screen)
-            draw_neon_text(screen, "Mouse to Aim/Shoot", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT - 40)
-
-        elif game_state == "PLAYING":
-             hud.draw(screen)
-             health_bar.draw(screen)
-
-             if paused:
-                 s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                 s.fill((0, 0, 0, 150))
-                 screen.blit(s, (0,0))
-                 draw_neon_text(screen, "PAUSED", assets['font_xl'], WHITE, SCREEN_WIDTH/2, SCREEN_HEIGHT/2)
-
-        elif game_state == "GAMEOVER":
-             if player.lives > 0:
-                 for sprite in all_sprites:
-                     screen.blit(sprite.image, (sprite.rect.x + shake_offset[0], sprite.rect.y + shake_offset[1]))
-             
-             s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-             s.fill((50, 0, 0, 200))
-             screen.blit(s, (0,0))
-             
-             go_text.draw(screen)
-             draw_neon_text(screen, f"FINAL SCORE: {score}", assets['font_large'], WHITE, SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 40)
-             draw_neon_text(screen, f"HIGH SCORE: {high_score}", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 10)
-             
-             btn_retry.draw(screen)
-             btn_menu.draw(screen)
-
-        pygame.display.flip()
-
-    pygame.quit()
-    sys.exit()
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        with open("crash_log.txt", "w") as f:
-            traceback.print_exc(file=f)
-        pygame.quit()
-        sys.exit()
-
-from ui import AnimatedText, Button, HealthBar
-
-def get_high_score():
-    try:
-        with open("highscore.txt", "r") as f:
-            return int(f.read())
-    except:
-        return 0
-
-def save_high_score(new_score):
-    try:
-        with open("highscore.txt", "w") as f:
-            f.write(str(new_score))
-    except:
-        pass
-
-def main():
-    assets = load_assets()
-    high_score = get_high_score()
-    
-    # ... (rest of main initialization)
     # Groups
     all_sprites = pygame.sprite.Group()
     mobs = pygame.sprite.Group()
     bullets = pygame.sprite.Group()
     particles = pygame.sprite.Group()
     stars = pygame.sprite.Group() # Parallax stars
+    powerups = pygame.sprite.Group()
+    enemy_bullets = pygame.sprite.Group()
     
     # Create Stars
     for _ in range(50):
@@ -425,9 +163,13 @@ def main():
         mobs.empty()
         bullets.empty()
         particles.empty()
+        powerups.empty() 
+        enemy_bullets.empty()
         player = Player()
         all_sprites.add(player)
         score = 0
+        hud.update_score(0)
+        hud.update_lives(player.lives)
         
     btn_play = Button("PLAY", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2, action=start_game)
     btn_quit = Button("QUIT", assets['font_large'], SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 80, bg_color=RED, hover_color=(200, 50, 50))
@@ -518,41 +260,85 @@ def main():
                     if b not in all_sprites: all_sprites.add(b)
 
             player.update(create_particle)
-            mobs.update()
+            mobs.update(player.rect, enemy_bullets)
             bullets.update()
+            enemy_bullets.update()
             stars.update()
             particles.update()
+            powerups.update()
             
-            # UI Update
-            health_bar.set_value(player.lives)
-            health_bar.update()
-            
-            # Collisions: Bullet <-> Enemy
-            hits = pygame.sprite.groupcollide(mobs, bullets, True, True)
+            # Collisions: Player <-> Powerups
+            hits = pygame.sprite.spritecollide(player, powerups, True)
             for hit in hits:
-                score += 100
+                player.powerup(hit.type)
+                if hit.type == 'health':
+                    hud.update_lives(player.lives)
+
+            # Check Player <-> Enemy Bullet Collision
+            hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
+            for hit in hits:
+                if player.has_shield:
+                    spawn_explosion(hit.rect.center, BLUE, 10)
+                else:
+                    player.lives -= 1
+                    hud.update_lives(player.lives)
+                    if assets['explosion_sound']: assets['explosion_sound'].play()
+                    spawn_explosion(hit.rect.center, RED, 10)
+                    shaker.shake(5, 5)
+                    if player.lives <= 0:
+                         game_state = "GAMEOVER"
+                         spawn_explosion(player.rect.center, CYAN, 50)
+                         if score > high_score:
+                             high_score = score
+                             save_high_score(high_score)
+
+            # Collisions: Bullet <-> Enemy (With HP Logic)
+            # Use False for killing mobs, True for bullets
+            hits = pygame.sprite.groupcollide(mobs, bullets, False, True) 
+            for enemy, hit_bullets in hits.items():
+                for b in hit_bullets:
+                    score += 10
+                    hud.update_score(score)
+                    
+                    # Small hit effect
+                    create_particle(b.rect.center, ORANGE, 2, 2)
+                    
+                    if enemy.take_damage(1): # If True, enemy died
+                        score += 90
+                        hud.update_score(score)
+                        enemy.kill() # Remove from groups
+                        
+                        if assets['explosion_sound']: assets['explosion_sound'].play()
+                        spawn_explosion(enemy.rect.center, ORANGE)
+                        shaker.shake(5, 5)
+                        
+                        if random.random() < POWERUP_SPAWN_CHANCE:
+                             p = PowerUp(enemy.rect.center)
+                             all_sprites.add(p)
+                             powerups.add(p)
                 
-                # Power-up check
+                # Global score checks
                 if score >= 3500:
                     player.bullet_count = 5
-
-                if assets['explosion_sound']: assets['explosion_sound'].play()
-                spawn_explosion(hit.rect.center, ORANGE)
-                shaker.shake(5, 5)
 
             # Collisions: Player <-> Enemy
             hits = pygame.sprite.spritecollide(player, mobs, True)
             for hit in hits:
-                player.lives -= 1
-                if assets['explosion_sound']: assets['explosion_sound'].play()
-                spawn_explosion(hit.rect.center, RED, 20)
-                shaker.shake(15, 15)
-                if player.lives <= 0:
-                    game_state = "GAMEOVER"
-                    spawn_explosion(player.rect.center, CYAN, 50)
-                    if score > high_score:
-                        high_score = score
-                        save_high_score(high_score)
+                if player.has_shield:
+                    spawn_explosion(hit.rect.center, BLUE, 20)
+                    shaker.shake(5, 5)
+                else:
+                    player.lives -= 1
+                    hud.update_lives(player.lives)
+                    if assets['explosion_sound']: assets['explosion_sound'].play()
+                    spawn_explosion(hit.rect.center, RED, 20)
+                    shaker.shake(15, 15)
+                    if player.lives <= 0:
+                        game_state = "GAMEOVER"
+                        spawn_explosion(player.rect.center, CYAN, 50)
+                        if score > high_score:
+                            high_score = score
+                            save_high_score(high_score)
         
         elif game_state == "GAMEOVER":
             go_text.update()
@@ -561,10 +347,8 @@ def main():
             stars.update()
             particles.update()
 
-        # Get screen shake offset
         shake_offset = shaker.get_offset()
 
-        # 3. Draw
         rel_y = bg_y % assets['bg_image'].get_rect().height
         screen.blit(assets['bg_image'], (0 + shake_offset[0], rel_y - assets['bg_image'].get_rect().height + shake_offset[1]))
         if rel_y < SCREEN_HEIGHT:
@@ -572,22 +356,21 @@ def main():
         if game_state == "PLAYING" and not paused:
             bg_y += 1
             
-        # Draw Stars
         for star in stars:
             star.draw(screen, shake_offset)
 
-        # Draw Sprites
         if game_state == "PLAYING" or (game_state == "GAMEOVER" and player.lives > 0):
              for sprite in all_sprites:
                  screen.blit(sprite.image, (sprite.rect.x + shake_offset[0], sprite.rect.y + shake_offset[1]))
+             
+             # Manually draw enemy bullets (since not in all_sprites or need layer)
+             for b in enemy_bullets:
+                 screen.blit(b.image, (b.rect.x + shake_offset[0], b.rect.y + shake_offset[1]))
         
-        # Draw Particles
         for p in particles:
             p.draw(screen, shake_offset)
 
-        # UI Overlay
         if game_state == "MENU":
-            # Dim Background
             s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             s.fill((0, 0, 0, 150))
             screen.blit(s, (0,0))
@@ -596,15 +379,11 @@ def main():
             hs_text_menu.draw(screen)
             btn_play.draw(screen)
             btn_quit.draw(screen)
-            
             draw_neon_text(screen, "Mouse to Aim/Shoot", assets['font_ui'], YELLOW, SCREEN_WIDTH/2, SCREEN_HEIGHT - 40)
 
         elif game_state == "PLAYING":
-             # Score
-             draw_neon_text(screen, f"SCORE: {score}", assets['font_ui'], WHITE, SCREEN_WIDTH - 100, 30)
-             # Lives Bar
+             hud.draw(screen)
              health_bar.draw(screen)
-             draw_neon_text(screen, "LIVES", assets['font_ui'], WHITE, 60, 45, "center")
 
              if paused:
                  s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
