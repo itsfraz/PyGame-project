@@ -416,8 +416,11 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
-        with open("crash_log.txt", "w") as f:
+    except BaseException:
+        import datetime
+        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crash_log.txt")
+        with open(log_path, "w") as f:
+            f.write(f"Crash Timestamp: {datetime.datetime.now()}\n")
             traceback.print_exc(file=f)
         pygame.quit()
         sys.exit()

@@ -11,7 +11,10 @@ class PowerUp(pygame.sprite.Sprite):
         self.image.fill(POWERUP_COLORS[self.type])
         
         # Add a letter identifier
-        font = pygame.font.sysfont('arial', 20, bold=True)
+        try:
+            font = pygame.font.SysFont('arial', 20, bold=True)
+        except:
+             font = pygame.font.Font(None, 20)
         text = str(self.type[0]).upper()
         text_surf = font.render(text, True, (0,0,0))
         text_rect = text_surf.get_rect(center=(POWERUP_SIZE//2, POWERUP_SIZE//2))

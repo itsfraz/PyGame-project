@@ -1,8 +1,10 @@
 Traceback (most recent call last):
-  File "D:\Internship Project\PyGame project\space_shooter_game\main.py", line 266, in <module>
+  File "d:\Internship Project\PyGame project\space_shooter_game\main.py", line 418, in <module>
     main()
     ~~~~^^
-  File "D:\Internship Project\PyGame project\space_shooter_game\main.py", line 155, in main
-    btn_play.update()
-    ^^^^^^^^
-NameError: name 'btn_play' is not defined
+  File "d:\Internship Project\PyGame project\space_shooter_game\main.py", line 316, in main
+    p = PowerUp(enemy.rect.center)
+  File "d:\Internship Project\PyGame project\space_shooter_game\powerups.py", line 14, in __init__
+    font = pygame.font.sysfont('arial', 20, bold=True)
+           ^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'pygame.font' has no attribute 'sysfont'. Did you mean: 'SysFont'?

@@ -45,7 +45,7 @@ class Particle(pygame.sprite.Sprite):
                 pygame.draw.circle(surf, alpha_color, (r, r), r)
                 surface.blit(surf, (self.pos[0] - r + offset[0], self.pos[1] - r + offset[1]))
             except Exception as e:
-                print(f"Particle Draw Error: {e}, Color: {self.color}, Life: {self.life}, Radius: {self.radius}")
+                pass # Silently fail particle draw to avoid crash
 
 class ScreenShake:
     def __init__(self):
@@ -84,7 +84,13 @@ class Star(pygame.sprite.Sprite):
             
         # Flicker
         self.alpha += self.alpha_change
-        if self.alpha >= 255 or self.alpha <= 100:
+        
+        # Clamp alpha in update logic too, just to be safe
+        if self.alpha >= 255:
+            self.alpha = 255
+            self.alpha_change *= -1
+        elif self.alpha <= 100:
+            self.alpha = 100
             self.alpha_change *= -1
 
     def draw(self, surface, offset=(0,0)):
@@ -94,13 +100,17 @@ class Star(pygame.sprite.Sprite):
             try:
                 surf = pygame.Surface((self.radius*2, self.radius*2), pygame.SRCALPHA)
                 
-                # Ensure alpha is valid
+                # Ensure alpha is valid for drawing
+                # Although we clamp in update, let's double check here
                 a = min(255, max(0, int(self.alpha)))
+                
                 # Ensure color
                 c = self.color
                 if len(c) != 3: c = (255, 255, 255)
                 
+                # Draw
                 pygame.draw.circle(surf, (*c, a), (self.radius, self.radius), self.radius)
                 surface.blit(surf, (pos[0]-self.radius, pos[1]-self.radius))
             except Exception as e:
-                print(f"Star Draw Error: {e}, Color: {self.color}")
+                # Log but don't crash
+                 print(f"Star Draw Error: {e}")

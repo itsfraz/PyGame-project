@@ -1,11 +1,9 @@
+Crash Timestamp: 2026-01-06 12:57:13.321482
 Traceback (most recent call last):
-  File "D:\Internship Project\PyGame project\space_shooter_game\main.py", line 297, in <module>
+  File "d:\Internship Project\PyGame project\space_shooter_game\main.py", line 418, in <module>
     main()
     ~~~~^^
-  File "D:\Internship Project\PyGame project\space_shooter_game\main.py", line 238, in main
-    star.draw(screen, shake_offset)
-    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\Internship Project\PyGame project\space_shooter_game\vfx.py", line 89, in draw
-    pygame.draw.circle(surf, (*self.color, self.alpha), (self.radius, self.radius), self.radius)
-    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: invalid color argument
+  File "d:\Internship Project\PyGame project\space_shooter_game\main.py", line 414, in main
+    sys.exit()
+    ~~~~~~~~^^
+SystemExit
